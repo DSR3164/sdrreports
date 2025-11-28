@@ -1,0 +1,134 @@
+\chapter*{\practicetitle}
+\textbf{Цель работы:} Ознакомиться с архитектурой SDR-устройства ADALM Pluto. Сформировать радиоприемник для приёма и воспроизведения радиосигналов в реальном времени при помощи фреймворка GNU Radio и Adalm Pluto SDR.
+\addcontentsline{toc}{section}{\MakeUppercase{Цель работы}}
+
+\sect{Краткие теоретические сведения}
+\textbf{GNURadio} - это инструмент который позволяет при помощи “строительных блоков” создать конфигурацию радиоустройства, не написав ни одной строчки кода, и запустить программу непосредственно с использованием модуля \textbf{SDR} (программно-определяемое радио), например Adalm-Pluto, LimeSDR, и др.
+
+{\setlength{\parskip}{8pt}\textbf{Что такое SDR?} \\
+\textbf{SDR} (Software Defined Radio) — это программно-определяемое радио, в котором большинство функций традиционного радиоприёмника и радиопередатчика реализуются программно, а не аппаратно.\\В классических радиосистемах такие операции, как фильтрация, модуляция, демодуляция, обработка спектра и синхронизация выполняются с помощью аналоговых электронных блоков: фильтров, смесителей, детекторов, генераторов и т. д.\\В SDR эти операции переносятся в цифровую область и обрабатываются программно, на компьютере или встроенном процессоре. Аппаратная часть SDR сведена к минимуму и включает только аналоговый фронтенд, АЦП и ЦАП, необходимые для преобразования сигнала между аналоговой и цифровой формами. Благодаря этому SDR позволяет быстро изменять параметры работы радиосистемы — частоту, полосу, тип модуляции и другие настройки — без переделки оборудования, лишь за счёт изменения программной конфигурации.
+
+\textbf{Adalm Pluto} имеет два основных компонента — аналоговый радиочастотный приемопередатчик \textbf{AD9363} и система на кристалле (SoC) Xilinx Zynq 7000 Series.
+
+\textbf{AD9363} содержит необходимые усилители, фильтры, а также цифро-аналоговые и аналого-цифровые преобразователи (\textbf{12-bit ADC} и \textbf{}{DAC}). Позволяет принимать и предоставлять IQ-сэмплы, формируемые  или принимаемые системой на кристале \textbf{Zynq SoC}. Пользователь может настроить  несущую частоту, частоту дискретизации и т.д.
+
+Система на кристале оснащена процессором \textbf{ARM Cortex A9}, работающим на частоте \textbf{667 МГц} в сочетании с программируемой пользователем вентильной матрицей (\textbf{FPGA}). Пользовательские аппаратные модули реализованы в FPGA, обеспечивая связующий слой между прикладными процессорами (\textbf{ARM Cortex}) и радиочастотным приемопередатчиком (\textbf{AD9363}). Позволяет передавать и получать IQ-сэмплы пользовательскими приложениями, работающими на прикладных процессорах, через драйверы, размещенные в ядре \textbf{Linux}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[height=0.5\textwidth, keepaspectratio]{images/\practicenumber/adalmplutodiagram}
+  \caption{Структура SDR}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[height=0.5\textwidth, keepaspectratio]{images/\practicenumber/adalmpluto}
+  \caption{Устройство SDR Adalm Pluto}
+\end{figure}}
+
+\newpage
+\sect{Ход работы}
+\textbf{1. Установка GNURadio}\\
+В большинстве версий Ubuntu в менеджере приложений (Ubuntu Software) присутствует пакет GNU Radio Companion.\\
+Я установил GNU Radio через менеджер приложений - Ubuntu Software Center.
+
+\textbf{2. Сборка FM-радио приёмника}\\
+\textbf{Необходимые блоки:}
+\begin{itemize}
+  \item {\textbf{PlutoSDR Source}} - источник сигнала с устройства ADALM Pluto.
+        \begin{itemize}
+          \item IIO context URI - IP адрес для подключения к устройству.
+          \item LO Frequency - несущая частота FM-станции.
+          \item Sample Rate - частота дискретизации.
+          \item Buffer Size - размер буфера.
+          \item RF Bandwidth - ширина полосы пропускания.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/PlutoSDR_source}
+          \caption{PlutoSDR Source}
+        \end{figure}
+  \item {\textbf{QT GUI Frequency Sink}} - блок для визуализации спектра сигнала в реальном времени.\\Поможет нам визуально для более точного поиска FM-частоты.
+        \begin{itemize}
+          \item FFT Size - размер БПФ.
+          \item Center Frequency - центральная частота.
+          \item Bandwidth - полоса пропускания.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/Freq_sink}
+          \caption{QT GUI Frequency Sink}
+        \end{figure}
+  \item {\textbf{Low Pass Filter}} - блок для фильтрации шумов.\\Позволяет избавиться (подавить) от “лишнего” сигнала на частотах, отличных от среза искомой полосы FM-станции.
+        \begin{itemize}
+          \item Decimation - параметр, который необходимо настроить под sample rate аудио-потока для прослушивания.
+          \item Gain - коэффициент усиления.
+          \item Sample Rate - частота дискретизации.
+          \item Cutoff Frequency - частота среза фильтра.
+          \item Transition Width - ширина переходной полосы.
+          \item Window - тип окна.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/LowPassFilter}
+          \caption{Low Pass Filter}
+        \end{figure}
+  \item {\textbf{WBFM Receive}} - блок позволяющий демодулировать широковещательный FM-сигнал.
+        \begin{itemize}
+          \item Quadrature Rate - частота дискретизации.
+          \item Audio Decimation - параметр, который необходимо настроить под sample rate аудио-потока для прослушивания.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/wbfm}
+          \caption{WBFM Receive}
+        \end{figure}
+  \item {\textbf{Audio Sink}} - блок для вывода звука на аудиоустройство
+        \begin{itemize}
+          \item Sample Rate - частота дискретизации.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/audioSink}
+          \caption{Audio Sink}
+        \end{figure}
+  \item {\textbf{QT GUI Time Sink}} - блок для визуализации сигнала во временной области.
+        \begin{itemize}
+          \item Number of Points - количество точек на экране.
+          \item Sample Rate - частота дискретизации.
+          \item Autoscale - авто масштабирование.
+        \end{itemize}
+        \begin{figure}[H]
+          \centering
+          \includegraphics[width=0.5\textwidth, keepaspectratio]{images/\practicenumber/Time_sink}
+          \caption{QT GUI Time Sink}
+        \end{figure}
+  \item {\textbf{Variables}} - блок переменных.
+        \begin{itemize}
+          \item samp\_rate: 2.4M - частота дискретизации.
+          \item bw: 480k - ширина полосы пропускания.
+        \end{itemize}
+  \item {\textbf{QT GUI Range}} - GUI ползунок для изменения каких либо параметров в реальном времени.
+        \begin{itemize}
+          \item ID: tune - идентификатор переменной.
+          \item Default Value: 106.2M - значение по умолчанию.
+          \item Start: 88.7M - минимальное значение.
+          \item Stop: 110.1M - максимальное значение.
+          \item Step: 12.5k - шаг изменения значения.
+        \end{itemize}
+\end{itemize}
+
+\textbf{Итоговая схема FM-радио приёмника:}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1\textwidth, keepaspectratio]{images/\practicenumber/scheme}
+  \caption{FM Radio Receiver}
+\end{figure}
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1\textwidth, keepaspectratio]{images/\practicenumber/channel}
+  \caption{Пример GUI FM-радио приёмника}
+\end{figure}
+
+\sect{Вывод}
+В ходе выполнения лабораторной работы была изучена архитектура программно-определяемого радио ADALM-Pluto, а также особенности его взаимодействия с фреймворком GNU Radio. На практике был собран и протестирован FM-радиоприёмник, работающий в реальном времени. В процессе работы были освоены базовые блоки GNU Radio, настроены параметры источника сигнала, фильтрации, демодуляции и аудиовывода. Построенная схема позволила успешно принимать, демодулировать и воспроизводить FM-радиосигналы, а также визуализировать спектр и временную область сигнала. Работа показала удобство и гибкость SDR-подхода, позволяющего изменять функциональность радиосистемы за счёт программной конфигурации без необходимости модификации аппаратной части.

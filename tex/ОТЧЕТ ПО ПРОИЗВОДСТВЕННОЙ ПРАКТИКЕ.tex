@@ -1,0 +1,38 @@
+\documentclass[a4paper,12pt,oneside,openany]{memoir}
+\input{preamble.tex}
+
+\newcommand{\includelab}[2]{% Макрос для включения лабораторной работы
+  \renewcommand{\practicenumber}{#1}%
+  \renewcommand{\practicetitle}{#2}%
+  \phantomsection
+  \addcontentsline{toc}{section}{\MakeUppercase{\practicetitle}}%
+  \let\oldaddcontentsline\addcontentsline%
+  \renewcommand{\addcontentsline}[3]{}%
+  \include{\practicenumber}%
+  \let\addcontentsline\oldaddcontentsline%
+}
+
+\newcommand{\practicenumber}{}
+\newcommand{\practicetitle}{}
+
+\begin{document}
+
+\includepdf[pages=-]{ШКЛЯЕВ_ПРАКТИКА_ТИТУЛ_SDR}
+
+\newpage
+\setcounter{page}{2}
+\OnehalfSpacing*
+\tableofcontents*
+\newpage
+
+\includelab{1}{Архитектура Adalm Pluto SDR. GNU Radio. Построение радио-приёмника}
+\includelab{2}{Введение в архитектуру SDR-устройств. Знакомство с библиотеками Soapy SDR, Libiio. Инициализация SDR-устройства. Работа с буфером: получение I/Q-отсчётов}
+\includelab{3}{Принципы работы Soapy SDR и работа с Adalm Pluto. Формирование и передача сигналов произвольной формы}
+%\includelab{4}{Архитектура SDR-устройств. Продолжение. Примеры формирования I/Q-сэмплов. Работа с буфером приёма}
+%\includelab{5}{Приём сигналов с BPSK/QPSK. Имитация аналоговой передачи звука и его приём на SDR. Влияние чувствительности и усиления}
+%\includelab{6}{Моделирование формирования и приёма QPSK. Реализация приёма и передачи BPSK}
+%\includelab{7}{Алгоритм дискретной свёртки. Реализация приёма и передачи BPSK-символов}
+%\includelab{8}{Приём QPSK/BPSK. Согласованный фильтр, глазковая диаграмма, поиск оптимального отсчёта, необходимость символьной синхронизации}
+%\includelab{9}{Символьная синхронизация. Детектор временной ошибки. Схема Гарднера. Реализация детектора на SDR. Написание функций петли (контура) синхронизации}
+
+\end{document}
