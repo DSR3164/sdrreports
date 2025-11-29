@@ -8,3 +8,5 @@
 !*.docx
 !*.md
 !.gitignore
+[ПТm]*.pdf
+[ПТm]*.docx
