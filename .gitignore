@@ -4,7 +4,8 @@
 !*.tex
 !*.pdf
 !*.png
-!*.py
+!*.jpg
+!*.jpeg
 !*.docx
 !*.md
 !.gitignore
