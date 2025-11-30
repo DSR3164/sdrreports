@@ -1,123 +1,172 @@
 \fancypagestyle{plain}{%
   \fancyhf{}%
-  \fancyhead[L]{\footnotesize\href{https://github.com/DSR3164/sdr/tree/v4}{github.com/DSR3164/sdr/tree/v4}}%
-  \fancyhead[R]{\hypersetup{hidelinks}\qrcode[height=1.4cm]{https://github.com/DSR3164/sdr/tree/v4}}
+  \fancyhead[L]{\footnotesize\href{https://github.com/DSR3164/sdr/tree/v5}{github.com/DSR3164/sdr/tree/v5}}%
+  \fancyhead[R]{\hypersetup{hidelinks}\qrcode[height=1.4cm]{https://github.com/DSR3164/sdr/tree/v5}}
   \fancyfoot[C]{\thepage}
 }
 
-\chapter*{\practicetitle} %Имитация аналоговой передачи звука и его приём на SDR. Влияние чувствительности и усиления
-\textbf{Цель работы:} Исследование влияния шума, чувствительности и усиления на качество сигнала. Создание алгоритмов конвертации audio$\rightarrow$pcm$\rightarrow$samples$\rightarrow$pcm$\rightarrow$audio
+\chapter*{\practicetitle} %Моделирование формирования и приёма QPSK. Реализация приёма и передачи BPSK. Алгоритм дискретной свёртки.
+\textbf{Цель работы:} Реализовать формирование и передачу/прием QPSK/BPSK-сигнала. Разработать алгоритм дискретной свёртки для фильтра.
 \addcontentsline{toc}{section}{\MakeUppercase{Цель работы}}
 
 \sect{Краткие теоретические сведения}
-\textbf{Чувствительность приёмника} определяет минимальный уровень сигнала, который можно различить на фоне собственного шума тракта. Усиление RX/TX влияет на амплитуду принимаемых и передаваемых выборок: чрезмерное усиление приводит к насыщению и искажению, недостаточное — к снижению отношения сигнал/шум.
-\textbf{Усиление} — это коэффициент усиления, который определяет, насколько сильно цифровые I/Q-выборки будут увеличены перед подачей на ЦАП/АЦП. Малое значение даёт слишком слабый радиосигнал, большое — вызывает перегрузку тракта, искажения и спектральные выбросы. Правильный выбор усиления — это подбор уровня, при котором передатчик работает в линейном режиме и форма сигнала соответствует исходным выборкам.
+В \textbf{QPSK} (Quadrature Phase Shift Keying) информация кодируется изменением фазы несущего сигнала в четырёх возможных состояниях, что позволяет передавать два бита на символ. В \textbf{BPSK} (Binary Phase Shift Keying) используется два состояния фазы, что позволяет передавать один бит на символ.
 
-\textbf{Шум} в SDR — это смесь теплового шума, квантования АЦП, помех тракта и внешних источников. Вся обработка в итоге сводится к контролю уровней усиления, динамического диапазона и сохранению линейности канала. Корректное кодирование PCM и обратное преобразование позволяют восстановить исходный аудиосигнал, если цепочка audio$\rightarrow$PCM$\rightarrow$samples$\rightarrow$PCM$\rightarrow$audio не вносит систематических искажений.
+\textbf{Mapper} - блок, преобразующий входную битовую последовательность в последовательность комплексных символьных значений (модуляция). Для QPSK используется по два бита на символ, для BPSK - один бит.
+
+\textbf{Upsampler} - (нулевой вставщик) увеличивает частоту дискретизации последовательности символов, вставляя между соседними символами $L-1$ нулевых отсчётов, где $L$ - фактор апсемплинга.
+Upsampler подготавливает дискретную последовательность для последующей фильтрации (pulse shaping) и цифрового преобразования на несущую. Фактически он задаёт число отсчётов на символ.
+
+\textbf{Pulse shaping filter} - (формирующий фильтр) ограничивает спектр сигнала, уменьшает межсимвольную интерференцию (ISI) и задаёт желаемую временную форму символа. Как правило, корневой фильтр Найквиста (например, root-raised cosine) - выполняет свёртку передискретизированной последовательности символов с импульсной характеристикой, удовлетворяющей критерию отсутствия межсимвольной интерференции в момент выборки.
+
+\textbf{Constellation diagram} - (сигнальное созвездие) представление всевозможных значений комплексной амплитуды манипулированных радиосигналов на комплексной плоскости.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.45\textwidth, keepaspectratio]{images/\practicenumber/bpsk_const_diagram}
+  \includegraphics[width=0.45\textwidth, keepaspectratio]{images/\practicenumber/qpsk_const_diagram}
+  \caption{Сигнальное созвездие BPSK и QPSK}
+\end{figure}
 
 \sect{Ход работы}
+В данной работе была реализована передача только QPSK сигнала 
 
-Для начала необходимо подготовить аудиофайл в формате PCM. Исходный файл в формате MP3 был конвертирован в PCM с помощью следующего скрипта на Python:
-\begin{mdframed}
-\begin{minted}{python}
-import numpy as np
-import librosa
-from pydub import AudioSegment
+Для начала необходимо реализовать маппер. 
 
-
-#------------MP3==>PCM-------------
-y, sr = librosa.load("../1.mp3", sr=44100, mono=False)
-if y.ndim == 2:
-    y = y.T.reshape(-1)
-pcm_data = (y * 32767).astype(np.int16)
-pcm_data.tofile("../1.pcm")
-\end{minted}
-\end{mdframed}
-
-Далее была использована следующая функция для чтения PCM в C++:
+Mapper QPSK:
 \begin{mdframed}
 \begin{minted}{cpp}
-int16_t *read_pcm(const char *filename, size_t *sample_count)
+void mapper_q(const vector<int> &bits, vector<cp> &symbols)
 {
-    FILE *file = fopen(filename, "rb");
-    
-    fseek(file, 0, SEEK_END);
-    long file_size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-    printf("file_size = %ld\n", file_size);
-    
-    *sample_count = file_size / sizeof(int16_t);
-    int16_t *samples = (int16_t *)malloc(file_size);
-    size_t sf = fread(samples, sizeof(int16_t), *sample_count, file);
-    
-    if (sf == 0){
-        printf("file %s empty!", filename);
-    }
-    
-    fclose(file);
-    
-    return samples;
+    /*
+    Map input bits to QPSK symbols and store them in 'symbols'.
+    'bits' is the input vector of bits (0s and 1s).
+    'symbols' is the output vector of complex symbols.
+    00 -> +1 + 1j
+    01 -> +1 - 1j
+    10 -> -1 + 1j
+    11 -> -1 - 1j
+    */
+
+    for (size_t i = 0; i < symbols.size(); ++i)
+        symbols[i] = cp(bits[2 * i] * -2.0 + 1.0, bits[2 * i + 1] * -2.0 + 1.0);
 }
 \end{minted}
 \end{mdframed}
 
-После чтения PCM-файла, буферы заполняются отчетами и передаются на передачу и приём с помощью следующего кода:
+Mapper BPSK:
 \begin{mdframed}
 \begin{minted}{cpp}
-    size_t sample_count = 0;
-    int16_t *samples = read_pcm(filename, &sample_count);
-    if (!samples) return 1;
-    int buffs_size = tx_mtu;
-    int buffs_count = (sample_count/buffs_size);
-    int remainder = sample_count - buffs_count * buffs_size;
-    int full_size = buffs_count + (int)(bool)remainder;
-    printf("Количество сэмплов: %ld\nКоличество буферов: %ld == %d по %d + %d\n", sample_count, full_size, buffs_count, buffs_size, remainder);
+void mapper_b(const vector<int> &bits, vector<cp> &symbols)
+{
+    /*
+    Map input bits to BPSK symbols and store them in 'symbols'.
+    'bits' is the input vector of bits (0s and 1s).
+    'symbols' is the output vector of complex symbols.
+    0 -> +1 + 0j
+    1 -> -1 - 0j
+    */
 
-    // Количество итерация чтения из буфера
-    size_t iteration_count = 10;
-    long long last_time = 0;
-    
-    FILE* file = fopen("../2.pcm", "wb");
-    int16_t *rx_buffer = (int16_t *)malloc((rx_mtu * 2 * sizeof(int16_t)));
-
-    void *rx_buffs[] = {rx_buffer};
-    int flags;        // flags set by receive operation
-    long long timeNs; //timestamp for receive buffer
-    long timeoutUs = 400000;
-    
-    flags = SOAPY_SDR_HAS_TIME;
-    for (size_t b = 0; b < full_size; b++)
-    {
-        size_t current_size = (b == full_size - 1 && remainder > 0) ? remainder : buffs_size;
-        const void *one_buff = samples + b * buffs_size * 2;
-        
-        int sr = SoapySDRDevice_readStream(sdr, rxStream, rx_buffs, rx_mtu, &flags, &timeNs, timeoutUs);
-        
-        long long tx_time = timeNs + (4 * 1000 * 1000); // на 4 [мс] в будущее
-        
-        int st = SoapySDRDevice_writeStream(sdr, txStream, &one_buff, tx_mtu, &flags, tx_time, timeoutUs);
-        
-        if (st < 0)
-        printf("TX Failed on buffer %zu: %i\n", b, st);
-        fwrite(rx_buffer, 2 * rx_mtu * sizeof(int16_t), 1, file);
-        last_time = tx_time;
-        printf("Buffer: %lu - Samples: %i, Flags: %i, Time: %lli, TimeDiff: %lli\n", b, sr, flags, timeNs, (timeNs - last_time) * (last_time > 0));
-    }
+    for (size_t i = 0; i < symbols.size(); ++i)
+        symbols[i] = cp(bits[i] * -2.0 + 1.0, 0.0);
+}
 \end{minted}
 \end{mdframed}
 
-После выполнения передачи и приёма, полученный PCM-файл был конвертирован обратно в MP3 с помощью следующего скрипта на Python:
+После реализации маппера был реализован апсемплер:
 \begin{mdframed}
-\begin{minted}{python}
-#------------PCM==>MP3-------------
-pcm_data = np.fromfile("../2.pcm", dtype=np.int16)
-mono_stereo = 2
-audio = AudioSegment(data=pcm_data.tobytes(), sample_width=2, frame_rate=44100, channels=mono_stereo)
-audio.export("../2.mp3", format="mp3", bitrate="159k")
+\begin{minted}{cpp}
+void upsample(const vector<cp> &symbols, vector<cp> &upsampled, int up = 10)
+{
+    /*
+    Upsample the input symbols with zeros by a factor of 'up' and store the result in 'upsampled'.
+    'symbols' is the input vector of complex symbols.
+    'upsampled' is the output vector of complex samples after upsampling.
+    'up' is the upsampling factor (default is 10).
+    */
+
+    if (upsampled.size() < symbols.size() * up)
+    {
+        printf("Ошибка: недостаточный размер вектора для апсемплинга!\n");
+        return;
+    }
+    fill(upsampled.begin(), upsampled.end(), cp(0, 0));
+
+    for (size_t i = 0; i < symbols.size(); ++i)
+    {
+        upsampled[i * up] = symbols[i];
+    }
+}
 \end{minted}
 \end{mdframed}
-В при передачи сигнала в "аналоговом" виде любой шум влиял на значения и итоговый звук изменялся, результат сложения двух сигналов - \href{https://github.com/DSR3164/sdr/blob/3507d37543b31e96a6068d0a7a81cbbd5b161162/pluto/dev/2.mp3}{2.mp3} - первые 3 секунды - исходный сигнал (хорошо различимый), далее - сигнал с шумом.
+
+Функция формирующего фильтра (дискретная свёртка):
+\begin{mdframed}
+\begin{minted}{cpp}
+void filter_i(const vector<cp> &a, const vector<double> &b, vector<int> &y)
+{
+    /*
+    Convolve input signal 'a' with filter coefficients 'b' and store the result in 'y'.
+    'a' is a vector of complex samples.
+    'b' is a vector of filter coefficients (real numbers), constant 1 in our case.
+    'y' is the output vector of integers (filtered signal).
+    */
+    const int nb = b.size();
+    const int na = a.size();
+
+    y.assign(na, 0);
+
+    for (int n = 0; n < na; ++n)
+    {
+        int acc = 0;
+        for (int m = 0; m < nb; ++m)
+        {
+            if (n - m >= 0)
+                acc += a[n - m].real() * b[m];
+        }
+        y[n] = acc;
+    }
+}
+\end{minted}
+\end{mdframed}
+
+Функция формирующего фильтра (дискретная свёртка) - мнимая часть:
+\begin{mdframed}
+\begin{minted}{cpp}
+void filter_q(const vector<cp> &a, const vector<double> &b, vector<int> &y)
+{
+    /*
+    Convolve input signal 'a' with filter coefficients 'b' and store the result in 'y'.
+    'a' is a vector of complex samples.
+    'b' is a vector of filter coefficients (real numbers), constant 1 in our case.
+    'y' is the output vector of integers (filtered signal).
+    */
+    const int nb = b.size();
+    const int na = a.size();
+
+    y.assign(na, 0);
+
+    for (int n = 0; n < na; ++n)
+    {
+        int acc = 0;
+        for (int m = 0; m < nb; ++m)
+        {
+            if (n - m >= 0)
+                acc += a[n - m].imag() * b[m];
+        }
+        y[n] = acc;
+    }
+}
+\end{minted}
+\end{mdframed}
+
+Полученный сигнал:
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=1\textwidth, keepaspectratio]{images/\practicenumber/qpsk}
+  \caption{Полученный QPSK сигнал}
+\end{figure}
+На графике так же можно заметить что сигналы I и Q лежат в пределах [-2048; 2047] что соответствует 12-битному АЦП.
 
 \sect{Вывод}
-В ходе работы была реализована последовательная схема преобразования аудиоданных: mp3 $\rightarrow$ PCM $\rightarrow$ набор отсчётов $\rightarrow$ PCM $\rightarrow$ аудио. Практическая реализация конвертаций позволила подтвердить корректность обработки сигнала в каждом из этапов и обеспечить восстановление исходного звучания после передачи данных в виде необработанных PCM-отсчётов.
-Эксперимент показал, что качество восстановленного сигнала существенно зависит от уровня шума, параметров чувствительности и усиления при передаче через тракт.
+В ходе работы были реализованы ключевые элементы цифрового тракта QPSK/BPSK: маппинг битовых последовательностей в комплексные символы, апсемплирование и дискретная свёртка с формирующим фильтром. Реализация показала, что даже минимальный набор алгоритмов обеспечивает корректное формирование временной структуры сигнала и отображение ожидаемого созвездия. Апсемплирование и фильтрация задали требуемую форму импульса и определили реальную динамику сигнала на уровне отсчётов, что подтверждается попадающими в 12-битный диапазон значениями I/Q.
